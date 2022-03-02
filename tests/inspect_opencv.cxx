@@ -56,14 +56,14 @@ using namespace cv;
 
 #define	COLOR(c)	Scalar(B(c), G(c), R(c))
 
-static double scale = 1.0;
+static float scale = 1.0;
 
 static void stringColor(Mat &screen, int x, int y, const char *text,
 			uint32_t color)
 {
 	static const int font = FONT_HERSHEY_PLAIN;
 	static const int thickness = scale;
-	static const double font_scale = scale;
+	static const float font_scale = scale;
 
 	putText(screen, text, Point(x, y), font, font_scale, COLOR(color),
 		thickness);
@@ -205,12 +205,12 @@ static void draw_capstone(Mat &screen, struct quirc *q, int index)
 	}
 }
 
-static void perspective_map(const double *c,
-			    double u, double v, struct quirc_point *ret)
+static void perspective_map(const float *c,
+			    float u, float v, struct quirc_point *ret)
 {
-	double den = c[6]*u + c[7]*v + 1.0;
-	double x = (c[0]*u + c[1]*v + c[2]) / den;
-	double y = (c[3]*u + c[4]*v + c[5]) / den;
+	float den = c[6]*u + c[7]*v + 1.0;
+	float x = (c[0]*u + c[1]*v + c[2]) / den;
+	float y = (c[3]*u + c[4]*v + c[5]) / den;
 
 	ret->x = rint(x);
 	ret->y = rint(y);
@@ -241,8 +241,8 @@ static void draw_grid(Mat &screen, struct quirc *q, int index)
 
 	for (y = 0; y < qr->grid_size; y++) {
 		for (x = 0; x < qr->grid_size; x++) {
-			double u = x + 0.5;
-			double v = y + 0.5;
+			float u = x + 0.5;
+			float v = y + 0.5;
 			struct quirc_point p;
 
 			perspective_map(qr->c, u, v, &p);

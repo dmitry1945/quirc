@@ -58,7 +58,7 @@ struct quirc_capstone {
 
 	struct quirc_point	corners[4];
 	struct quirc_point	center;
-	double			c[QUIRC_PERSPECTIVE_PARAMS];
+	float			c[QUIRC_PERSPECTIVE_PARAMS];
 
 	int			qr_grid;
 };
@@ -76,7 +76,7 @@ struct quirc_grid {
 
 	/* Grid size and perspective transform */
 	int			grid_size;
-	double			c[QUIRC_PERSPECTIVE_PARAMS];
+	float			c[QUIRC_PERSPECTIVE_PARAMS];
 };
 
 struct quirc_flood_fill_vars {

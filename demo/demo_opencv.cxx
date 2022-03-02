@@ -38,7 +38,7 @@ static int printer_timeout = 2;
 
 static const int font = FONT_HERSHEY_PLAIN;
 static const int thickness = 2;
-static const double font_scale = 1.5;
+static const float font_scale = 1.5;
 static Scalar blue = Scalar(255, 0, 8);
 
 static void fat_text(Mat &screen, int x, int y, const char *text)
