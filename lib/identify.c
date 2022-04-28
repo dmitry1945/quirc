@@ -335,6 +335,65 @@ static uint8_t otsu(const struct quirc *q)
 	return threshold;
 }
 
+// w - width image
+// h - heigth image
+// x - start position of segment
+// y - start position of segment
+// wx - width for x
+// wy - width for y
+uint8_t otsu_pic(uint8_t* image, int w, int h, int pos_x, int pos_y, int wx, int wy)
+{
+	unsigned int numPixels = wx * wy;
+
+	// Calculate histogram
+	unsigned int histogram[UINT8_MAX + 1];
+	(void)memset(histogram, 0, sizeof(histogram));
+	for (int y = pos_y; y < (wy + pos_y); y++)
+	{
+		for (int x = pos_x; x < (wx + pos_x); x++)
+		{
+			uint8_t value = image[y*w + x];
+			histogram[value]++;
+		}
+	}
+
+	// Calculate weighted sum of histogram values
+	float sum = 0;
+	unsigned int i = 0;
+	for (i = 0; i <= UINT8_MAX; ++i) {
+		sum += i * histogram[i];
+	}
+
+	// Compute threshold
+	float sumB = 0;
+	unsigned int q1 = 0;
+	float max = 0;
+	uint8_t threshold = 0;
+	for (i = 0; i <= UINT8_MAX; ++i) {
+		// Weighted background
+		q1 += histogram[i];
+		if (q1 == 0)
+			continue;
+
+		// Weighted foreground
+		const unsigned int q2 = numPixels - q1;
+		if (q2 == 0)
+			break;
+
+		sumB += i * histogram[i];
+		const float m1 = sumB / q1;
+		const float m2 = (sum - sumB) / q2;
+		const float m1m2 = m1 - m2;
+		const float variance = m1m2 * m1m2 * q1 * q2;
+		if (variance >= max) {
+			threshold = i;
+			max = variance;
+		}
+	}
+
+	return threshold;
+}
+
 static void area_count(void *user_data, int y, int left, int right)
 {
 	((struct quirc_region *)user_data)->count += right - left + 1;
@@ -944,6 +1003,9 @@ static void record_qr_grid(struct quirc *q, int a, int b, int c)
 	 * transform.
 	 */
 	measure_grid_size(q, qr_index);
+	// printf("measure_grid_size = %i\n", q->grids[qr_index].grid_size);
+	q->grid_size = q->grids[qr_index].grid_size;
+
 	/* Make an estimate based for the alignment pattern based on extending
 	 * lines from capstones A and C.
 	 */
@@ -953,6 +1015,10 @@ static void record_qr_grid(struct quirc *q, int a, int b, int c)
 			    &q->capstones[c].corners[3],
 			    &qr->align))
 		goto fail;
+
+	/* init in any case */
+	q->align_point.x = 0;
+	q->align_point.y = 0;
 
 	/* On V2+ grids, we should use the alignment pattern. */
 	if (qr->grid_size > 21) {
@@ -981,12 +1047,17 @@ static void record_qr_grid(struct quirc *q, int a, int b, int c)
 			flood_fill_seed(q, reg->seed.x, reg->seed.y,
 					QUIRC_PIXEL_BLACK, qr->align_region,
 					find_leftmost_to_line, &psd);
+
+			q->align_point.x = psd.corners->x;
+			q->align_point.y = psd.corners->y;
 		}
 	}
-
+#if EXTERNAL_WRAP_PERSPECTIVE
+	return;
+#else
 	setup_qr_perspective(q, qr_index);
 	return;
-
+#endif // EXTERNAL_WRAP_PERSPECTIVE
 fail:
 	/* We've been unable to complete setup for this grid. Undo what we've
 	 * recorded and pretend it never happened.
@@ -1070,16 +1141,27 @@ static void test_grouping(struct quirc *q, unsigned int i)
 
 static void pixels_setup(struct quirc *q, uint8_t threshold)
 {
-	if (QUIRC_PIXEL_ALIAS_IMAGE) {
-		q->pixels = (quirc_pixel_t *)q->image;
-	}
-
 	uint8_t* source = q->image;
 	quirc_pixel_t* dest = q->pixels;
 	int length = q->w * q->h;
 	while (length--) {
 		uint8_t value = *source++;
-		*dest++ = (value < threshold) ? QUIRC_PIXEL_BLACK : QUIRC_PIXEL_WHITE;
+		*dest++ = (value < (threshold)) ? QUIRC_PIXEL_BLACK : QUIRC_PIXEL_WHITE;
+	}
+}
+
+static void pixels_setup_pic(struct quirc* q, uint8_t threshold, int pos_x, int pos_y, int wx, int wy)
+{
+	uint8_t* source = q->image;
+	quirc_pixel_t* dest = q->pixels;
+
+	for (int y = pos_y; y < (wy + pos_y); y++)
+	{
+		for (int x = pos_x; x < (wx + pos_x); x++)
+		{
+			uint8_t value = source[y * q->w + x];
+			dest[y * q->w + x] = (value < (threshold)) ? QUIRC_PIXEL_BLACK : QUIRC_PIXEL_WHITE;
+		}
 	}
 }
 
@@ -1088,12 +1170,13 @@ uint8_t *quirc_begin(struct quirc *q, int *w, int *h)
 	q->num_regions = QUIRC_PIXEL_REGION;
 	q->num_capstones = 0;
 	q->num_grids = 0;
+	q->grid_size = 0;
 
 	if (w)
 		*w = q->w;
 	if (h)
 		*h = q->h;
-
+	
 	return q->image;
 }
 
@@ -1101,8 +1184,18 @@ void quirc_end(struct quirc *q)
 {
 	int i;
 
-	uint8_t threshold = otsu(q);
-	pixels_setup(q, threshold);
+	// We separate input image to 4x4 images and process them one by one
+	int step_x = 2;
+	int step_y = 2;
+
+	for (size_t dy = 0; dy < step_y; dy++)
+	{
+		for (size_t dx = 0; dx < step_x; dx++)
+		{
+			uint8_t threshold = otsu_pic(q->image, q->w, q->h, dx * (q->w / step_x), dy * (q->h/ step_y), q->w/ step_x, q->h/ step_y);
+			pixels_setup_pic(q, threshold, dx * (q->w / step_x), dy * (q->h / step_y), q->w / step_x, q->h / step_y);
+		}
+	}
 
 	for (i = 0; i < q->h; i++)
 		finder_scan(q, i);
@@ -1111,10 +1204,10 @@ void quirc_end(struct quirc *q)
 		test_grouping(q, i);
 }
 
-void quirc_extract(const struct quirc *q, int index,
+void quirc_extract(struct quirc *q, int index,
 		   struct quirc_code *code)
 {
-	const struct quirc_grid *qr = &q->grids[index];
+	struct quirc_grid *qr = &q->grids[index];
 	int y;
 	int i = 0;
 
@@ -1137,12 +1230,20 @@ void quirc_extract(const struct quirc *q, int index,
 	if (code->size > QUIRC_MAX_GRID_SIZE)
 		return;
 
+	q->grid_size = qr->grid_size;
 	for (y = 0; y < qr->grid_size; y++) {
 		int x;
 		for (x = 0; x < qr->grid_size; x++) {
+
+#if EXTERNAL_WRAP_PERSPECTIVE
+			if (q->pixels[qr->grid_size * y + x] > 0) {
+				code->cell_bitmap[i >> 3] |= (1 << (i & 7));
+			}
+#else
 			if (read_cell(q, index, x, y) > 0) {
 				code->cell_bitmap[i >> 3] |= (1 << (i & 7));
 			}
+#endif // EXTERNAL_WRAP_PERSPECTIVE
 			i++;
 		}
 	}

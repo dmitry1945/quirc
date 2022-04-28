@@ -19,6 +19,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "quirc.h"
 
@@ -37,14 +38,23 @@
 #define QUIRC_PERSPECTIVE_PARAMS	8
 
 #if QUIRC_MAX_REGIONS < UINT8_MAX
-#define QUIRC_PIXEL_ALIAS_IMAGE	1
 typedef uint8_t quirc_pixel_t;
 #elif QUIRC_MAX_REGIONS < UINT16_MAX
-#define QUIRC_PIXEL_ALIAS_IMAGE	0
 typedef uint16_t quirc_pixel_t;
 #else
 #error "QUIRC_MAX_REGIONS > 65534 is not supported"
 #endif
+
+// Used for external processing function to wrap perspective
+#define EXTERNAL_WRAP_PERSPECTIVE 1
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
 
 struct quirc_region {
 	struct quirc_point	seed;
@@ -76,7 +86,8 @@ struct quirc_grid {
 
 	/* Grid size and perspective transform */
 	int			grid_size;
-	float			c[QUIRC_PERSPECTIVE_PARAMS];
+
+	float 		c[QUIRC_PERSPECTIVE_PARAMS];
 };
 
 struct quirc_flood_fill_vars {
@@ -88,9 +99,10 @@ struct quirc_flood_fill_vars {
 
 struct quirc {
 	uint8_t			*image;
-	quirc_pixel_t		*pixels;
+	quirc_pixel_t	*pixels;
 	int			w;
 	int			h;
+	int			grid_size;
 
 	int			num_regions;
 	struct quirc_region	regions[QUIRC_MAX_REGIONS];
@@ -100,6 +112,7 @@ struct quirc {
 
 	int			num_grids;
 	struct quirc_grid	grids[QUIRC_MAX_GRIDS];
+	struct quirc_point     align_point;
 
 	size_t      		num_flood_fill_vars;
 	struct quirc_flood_fill_vars *flood_fill_vars;

@@ -161,7 +161,7 @@ struct quirc_data {
 int quirc_count(const struct quirc *q);
 
 /* Extract the QR-code specified by the given index. */
-void quirc_extract(const struct quirc *q, int index,
+void quirc_extract(struct quirc *q, int index,
 		   struct quirc_code *code);
 
 /* Decode a QR-code, returning the payload data. */
@@ -170,6 +170,8 @@ quirc_decode_error_t quirc_decode(const struct quirc_code *code,
 
 /* Flip a QR-code according to optional mirror feature of ISO 18004:2015 */
 void quirc_flip(struct quirc_code *code);
+
+uint8_t otsu_pic(uint8_t* image, int w, int h, int pos_x, int pos_y, int wx, int wy);
 
 #ifdef __cplusplus
 }

@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "quirc_internal.h"
+#include <malloc.h>
 
 const char *quirc_version(void)
 {
@@ -25,7 +26,7 @@ const char *quirc_version(void)
 
 struct quirc *quirc_new(void)
 {
-	struct quirc *q = malloc(sizeof(*q));
+	struct quirc *q = (struct quirc*)malloc(sizeof(*q));
 
 	if (!q)
 		return NULL;
@@ -39,9 +40,9 @@ void quirc_destroy(struct quirc *q)
 	free(q->image);
 	/* q->pixels may alias q->image when their type representation is of the
 	   same size, so we need to be careful here to avoid a double free */
-	if (!QUIRC_PIXEL_ALIAS_IMAGE)
-		free(q->pixels);
+	free(q->pixels);
 	free(q->flood_fill_vars);
+
 	free(q);
 }
 
@@ -84,11 +85,9 @@ int quirc_resize(struct quirc *q, int w, int h)
 	(void)memcpy(image, q->image, min);
 
 	/* alloc a new buffer for q->pixels if needed */
-	if (!QUIRC_PIXEL_ALIAS_IMAGE) {
-		pixels = calloc(newdim, sizeof(quirc_pixel_t));
-		if (!pixels)
-			goto fail;
-	}
+	pixels = calloc(newdim, sizeof(quirc_pixel_t));
+	if (!pixels)
+		goto fail;
 
 	/*
 	 * alloc the work area for the flood filling logic.
@@ -122,10 +121,9 @@ int quirc_resize(struct quirc *q, int w, int h)
 	q->h = h;
 	free(q->image);
 	q->image = image;
-	if (!QUIRC_PIXEL_ALIAS_IMAGE) {
-		free(q->pixels);
-		q->pixels = pixels;
-	}
+	free(q->pixels);
+	q->pixels = pixels;
+
 	free(q->flood_fill_vars);
 	q->flood_fill_vars = vars;
 	q->num_flood_fill_vars = num_vars;
